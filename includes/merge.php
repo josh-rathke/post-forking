@@ -24,7 +24,7 @@ class Fork_Merge {
 
 		add_filter( 'wp_insert_post_data', array( $this, 'check_merge_conflict' ), 10, 2 );
 		add_action( 'admin_notices', array( $this, 'conflict_warning' ) );
-		add_action( 'transition_post_status', array( $this, 'intercept_publish' ), 10, 3 );
+		add_action( 'transition_post_status', array( $this, 'intercept_publish' ), 0, 3 );
 
 	}
 
@@ -34,20 +34,33 @@ class Fork_Merge {
 	 * @param int $fork_id the ID of the fork to merge
 	 */
 	function merge( $fork ) {
+		$user = wp_get_current_user();
 
 		if ( !is_object( $fork ) )
 			$fork = get_post( $fork );
 
-		if ( $this->has_conflict_markup( $fork ) )
-			return false;
+		$fork_content_pre_merge = $fork->post_content;
 
-		if ( !current_user_can( 'publish_fork', $fork->ID ) )
+		if ( $this->has_conflict_markup( $fork ) ) {
+			update_post_meta( $fork->ID, 'fork-conflict-raw', $fork_content_pre_merge );
+			return false;
+		}
+
+		if ( !current_user_can( 'publish_fork', $fork->ID ) ) {
 			wp_die( __( 'You are not authorized to merge forks', 'post-forking' ) );
+		}
 
 		$update = array(
 			'ID' => $fork->post_parent,
 			'post_content' => $this->get_merged( $fork ),
 		);
+
+		// reload $fork to check for conflict markup, and save the original in postmeta if so
+		$fork = get_post( $fork->ID );
+
+		// Note: $merge_author = id of user who's doing the merge
+	  $merge_author = wp_get_current_user()->ID;
+    do_action( 'merge', $fork, $merge_author );
 
 		return wp_update_post( $update );
 
@@ -99,16 +112,19 @@ class Fork_Merge {
 
 		if ( !is_object( $fork ) )
 			$fork = get_post( $fork );
-			
+
 		$fork_id = $fork->ID;
 
 		//grab the three elments
 		$parent = $this->parent->revisions->get_parent_revision( $fork );
 		$current = $fork->post_parent;
-		
+
 		//normalize whitespace and convert string -> array
 		foreach ( array( 'fork', 'parent', 'current' ) as $string ) {
-			$$string = get_post( $$string )->post_content;
+			if ( is_object( $$string ) )
+				$$string = $$string->post_content;
+			else
+				$$string = get_post( $$string )->post_content;
 			$$string = normalize_whitespace( $$string );
 			$$string = explode( "\n", $$string );
 		}
@@ -170,13 +186,13 @@ class Fork_Merge {
 
 	function conflict_warning() {
 		global $post;
-		
+
 		if ( get_current_screen()->post_type != 'fork' )
 			return;
-			
+
 		if ( get_current_screen()->base != 'post' )
 			return;
-						
+
 		if ( !$post )
 			return;
 
@@ -218,6 +234,12 @@ class Fork_Merge {
 			return;
 
 		$post = $this->merge( $post->ID );
+		$fork_update = array(
+			'ID' => $post->ID,
+			'post_status' => 'merged',
+		);
+		wp_update_post( $fork_update );
+
 		wp_safe_redirect( admin_url( "post.php?action=edit&post={$post}&message=6" ) );
 		exit();
 
@@ -228,7 +250,7 @@ class Fork_Merge {
 	 * Check if the fork has conflict markup
 	 */
 	function has_conflict_markup( $fork ) {
-	
+
 		//postarr is being passed on publish
 		//convert to object for consistency
 		if ( is_array( $fork ) )

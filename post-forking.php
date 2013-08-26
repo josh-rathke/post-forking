@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Post Forking
- * Description: Post forking
+ * Description: WordPress Post Forking allows users to "fork" or create an alternate version of content to foster a more collaborative approach to WordPress content curation.
  * Author:      Benjamin J. Balter, Daniel Bachhuber, Aaron Jorbin
  * Version:     0.2-alpha
  * Plugin URI:  http://postforking.wordpress.com
@@ -46,6 +46,7 @@ require_once dirname( __FILE__ ) . '/includes/merge.php';
 require_once dirname( __FILE__ ) . '/includes/revisions.php';
 require_once dirname( __FILE__ ) . '/includes/branches.php';
 require_once dirname( __FILE__ ) . '/includes/diff.php';
+require_once dirname( __FILE__ ) . '/includes/preview.php';
 
 class Fork {
 
@@ -61,6 +62,7 @@ class Fork {
 		$this->capabilities = new Fork_Capabilities( $this );
 		$this->options = new Fork_Options( $this );
 		$this->branches = new Fork_Branches( $this );
+		$this->preview = new Fork_Preview( $this );
 
 		add_action( 'init', array( $this, 'register_cpt' ) );
 		add_action( 'init', array( $this, 'action_init' ) );
@@ -114,7 +116,7 @@ class Fork {
 			'parent_item_colon'  => _x( 'Parent Fork:', 'post-forking' ),
 			'menu_name'          => _x( 'Forks', 'post-forking' ),
 		);
-	
+
 		$args = array( 
 			'labels'              => $labels,
 			'hierarchical'        => true,
@@ -129,11 +131,20 @@ class Fork {
 			'can_export'          => true,
 			'rewrite'             => true,
 			'map_meta_cap'        => true, 
-			'capability_type'     => 'fork',
+			'capability_type'     => array( 'fork', 'forks' ),
 			'menu_icon'           => plugins_url( '/img/menu-icon.png', __FILE__ ),
 		);
 	
 		register_post_type( self::post_type, $args );
+
+		$status_args = array(
+			'label' => _x( 'Merged', 'post-forking' ),
+			'public' => true,
+			'exclude_from_search' => true,
+			'label_count' => _n_noop( 'Merged <span class="count">(%s)</span>', 'Merged <span class="count">(%s)</span>' ),
+		);
+
+		register_post_status( 'merged', $status_args );
 	}
 	
 	/** 
@@ -171,7 +182,7 @@ class Fork {
 		if ( $filter )
 			$post_types = array_keys( array_filter( $post_types ) );
 			
-		$post_type = apply_filters( 'fork_post_types', $post_types, $filter );
+		$post_types = apply_filters( 'fork_post_types', $post_types, $filter );
 
 		return  $post_types;
 		
@@ -388,7 +399,7 @@ class Fork {
  	}
  	
  	/**
- 	 * WHen post is deleted, delete posts
+ 	 * When post is deleted, delete posts
  	 * @param int $post_id the parent post
  	 */
  	function delete_post( $post_id ) {
@@ -405,4 +416,3 @@ class Fork {
 }
 
 $fork = new Fork();
-
