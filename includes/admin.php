@@ -23,6 +23,7 @@ class Fork_Admin {
 		add_action( 'do_meta_boxes', array( $this, 'remove_add_new_button' ), 10, 1 );
 		add_action( 'admin_menu', array( $this, 'remove_add_new_menu_item' ) );
 		add_filter( 'map_meta_cap', array( $this, 'post_new_lockdown' ), 10, 2 );
+		add_filter( 'admin_body_class', array( $this, 'remove_add_new_list_table' ), 10, 1 );
 
 	}
 
@@ -170,7 +171,7 @@ class Fork_Admin {
 
 		if ( Fork::post_type == get_post_type( $post ) ) {
 			$parent = $this->parent->revisions->get_previous_revision( $post );
-			$actions[] = '<a href="' . admin_url( "revision.php?action=diff&left={$parent}&right={$post->ID}" ) . '">' . __( 'Compare', 'post-forking' ) . '</a>';
+			$actions[] = '<a href="' . admin_url( "revision.php?page=fork-diff&right={$post->ID}" ) . '">' . __( 'Compare', 'post-forking' ) . '</a>';
 		}
 
 		return $actions;
@@ -230,6 +231,13 @@ class Fork_Admin {
 
 	}
 
+	/**
+	 * Add admin body class for the forks list table view
+	 */
+	function remove_add_new_list_table( $classes ) {
+		if ( 'edit-fork' == get_current_screen()->id )
+			return $classes .= ' fork-list';
+	}
 
 	/**
 	 * Lock down the post-new page for forks to prevent strange situations
